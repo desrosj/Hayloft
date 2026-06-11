@@ -1,0 +1,56 @@
+@import url("https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700&family=Libre+Franklin:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-body bg-surface text-ink antialiased;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+  a {
+    @apply text-accent hover:underline;
+  }
+}
+
+@layer components {
+  .label-eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-wider text-slate;
+  }
+  .card {
+    @apply rounded-lg border border-edge bg-white shadow-sm;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded font-display font-bold text-xs uppercase tracking-widest text-white bg-accent hover:bg-accent/90 px-5 py-2.5 transition;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded font-display font-bold text-xs uppercase tracking-widest text-white bg-ink hover:bg-ink-light px-5 py-2.5 transition;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded font-display font-bold text-xs uppercase tracking-widest text-ink border border-edge hover:bg-surface px-5 py-2.5 transition;
+  }
+  .field-label {
+    @apply block text-[11px] font-medium uppercase tracking-wider text-slate mb-1.5;
+  }
+  .field-input {
+    @apply w-full rounded border-edge bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:ring-accent;
+  }
+  .table-base {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-base th {
+    @apply text-left text-[11px] uppercase tracking-wider text-slate font-semibold px-3 py-2 border-b border-edge bg-surface;
+  }
+  .table-base td {
+    @apply px-3 py-2 border-b border-edge/60 align-top;
+  }
+  .nav-link {
+    @apply text-[12px] uppercase tracking-wider text-white/80 hover:text-white;
+  }
+  .nav-link.active {
+    @apply text-accent;
+  }
+}

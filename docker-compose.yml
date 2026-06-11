@@ -1,0 +1,22 @@
+# Local-development Postgres. Production runs on Railway's managed Postgres.
+services:
+  postgres:
+    image: postgres:17
+    container_name: hayloft_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hayloft
+      POSTGRES_USER: hayloft
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - hayloft_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hayloft -d hayloft"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hayloft_pgdata:
