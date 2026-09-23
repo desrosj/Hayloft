@@ -484,7 +484,7 @@ for (let d = 540; d >= 1; d--) {
        VALUES ($1, $2, $3, $4, $5, $6, now(), NULL)
        ON CONFLICT (expense_id) DO UPDATE SET url = EXCLUDED.url, file_name = EXCLUDED.file_name,
          content_type = EXCLUDED.content_type, file_size = EXCLUDED.file_size, data = EXCLUDED.data,
-         fetched_at = now(), fetch_error = NULL`,
+         file_path = NULL, fetched_at = now(), fetch_error = NULL`,
       [id, receiptUrl, fileName, isPdf ? "application/pdf" : "image/png", fileBytes.length, fileBytes],
     );
     receiptsSeeded++;

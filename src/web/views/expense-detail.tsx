@@ -45,7 +45,10 @@ export interface StoredReceipt {
   file_size: number | null;
   fetched_at: string | null;
   fetch_error: string | null;
-  has_data: boolean;
+  /** relative path under RECEIPTS_DIR when the file lives on disk */
+  file_path: string | null;
+  /** archived somewhere (Postgres bytes or a file on disk) */
+  stored: boolean;
 }
 
 interface ExpenseDetailProps {
@@ -63,7 +66,7 @@ export const ExpenseDetail: FC<ExpenseDetailProps> = ({ expense, receipt, newerI
   const person = fullName(expense.user_first, expense.user_last);
   const title = `${expense.category_name ?? "Expense"} · ${money(expense.total_cost, currency)}`;
   const receiptHref = `/expenses/${expense.id}/receipt`;
-  const stored = receipt?.has_data ?? false;
+  const stored = receipt?.stored ?? false;
   const storedType = receipt?.content_type ?? expense.receipt_content_type;
 
   let rawPretty = "";
@@ -235,6 +238,7 @@ export const ExpenseDetail: FC<ExpenseDetailProps> = ({ expense, receipt, newerI
                   <Row label="Type" value={storedType ?? "—"} />
                   <Row label="Size" value={bytes(receipt?.file_size ?? expense.receipt_file_size)} />
                   <Row label="Archived" value={dateTime(receipt?.fetched_at)} />
+                  <Row label="Stored" value={receipt?.file_path ? `On disk · ${receipt.file_path}` : "In Postgres"} />
                   {expense.receipt_url && (
                     <div class="pt-2">
                       <a href={expense.receipt_url} target="_blank" rel="noopener" class="text-xs">

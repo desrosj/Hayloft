@@ -8,6 +8,9 @@ import {
 } from "../views/expense-detail.js";
 import { parsePage } from "../lib/pagination.js";
 import { parsePeriod, periodCutoff } from "../lib/period.js";
+import { loadEnv } from "../../config/env.js";
+import { logger } from "../../lib/logger.js";
+import { readReceiptFile } from "../../lib/receipts.js";
 
 export const expensesRoutes = new Hono();
 
@@ -81,7 +84,7 @@ expensesRoutes.get("/expenses", async (c) => {
              ec.unit_name AS category_unit_name,
              e.invoice_id,
              (e.receipt_url IS NOT NULL) AS has_receipt,
-             (r.data IS NOT NULL) AS receipt_stored
+             (r.data IS NOT NULL OR r.file_path IS NOT NULL) AS receipt_stored
       FROM expenses e
       LEFT JOIN users u ON u.id = e.user_id
       LEFT JOIN projects p ON p.id = e.project_id
@@ -157,8 +160,8 @@ expensesRoutes.get("/expenses/:id", async (c) => {
   const [receipt, newer, older] = await Promise.all([
     qOne<StoredReceipt>(
       `
-      SELECT file_name, content_type, file_size, fetched_at, fetch_error,
-             (data IS NOT NULL) AS has_data
+      SELECT file_name, content_type, file_size, fetched_at, fetch_error, file_path,
+             (data IS NOT NULL OR file_path IS NOT NULL) AS stored
       FROM expense_receipts WHERE expense_id = @id
       `,
       { id },
@@ -214,11 +217,34 @@ expensesRoutes.get("/expenses/:id/receipt", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) return c.notFound();
 
-  const row = await qOne<{ data: Buffer; content_type: string | null; file_name: string | null }>(
-    "SELECT data, content_type, file_name FROM expense_receipts WHERE expense_id = @id AND data IS NOT NULL",
+  const row = await qOne<{
+    data: Buffer | null;
+    file_path: string | null;
+    content_type: string | null;
+    file_name: string | null;
+  }>(
+    `SELECT data, file_path, content_type, file_name FROM expense_receipts
+     WHERE expense_id = @id AND (data IS NOT NULL OR file_path IS NOT NULL)`,
     { id },
   );
   if (!row) return c.notFound();
+
+  // Receipts live either in Postgres (data) or on disk under RECEIPTS_DIR
+  // (file_path, relative). Both can coexist across a mode switch.
+  let bytes: Buffer | null = row.data;
+  if (!bytes && row.file_path) {
+    const dir = loadEnv().RECEIPTS_DIR;
+    if (!dir) {
+      logger.warn({ expense: id, file_path: row.file_path }, "receipt is on disk but RECEIPTS_DIR is not set");
+      return c.notFound();
+    }
+    bytes = await readReceiptFile(dir, row.file_path);
+    if (!bytes) {
+      logger.warn({ expense: id, file_path: row.file_path, dir }, "receipt file missing from RECEIPTS_DIR");
+      return c.notFound();
+    }
+  }
+  if (!bytes) return c.notFound();
 
   const type = safeContentType(row.content_type);
   const wantsDownload = c.req.query("download") !== undefined;
@@ -227,7 +253,7 @@ expensesRoutes.get("/expenses/:id/receipt", async (c) => {
 
   // Copy into a plain Uint8Array<ArrayBuffer>: Hono's body type doesn't
   // accept Node's Buffer (backed by ArrayBufferLike) directly.
-  const body = new Uint8Array(row.data);
+  const body = new Uint8Array(bytes);
   return c.body(body, 200, {
     "Content-Type": inline ? type : "application/octet-stream",
     "Content-Length": String(body.byteLength),

@@ -87,9 +87,27 @@ npm run fetch -- --resource expense_categories,expenses,expense_receipts
 npm run fetch -- --resource expense_receipts
 ```
 
-Receipts are stored in Postgres (`expense_receipts`, one `BYTEA` row per
-expense) so a `pg_dump` still captures the entire archive, files included,
-and nothing depends on the app server's filesystem. Every other field
+By default receipts are stored in Postgres (`expense_receipts`, one `BYTEA`
+row per expense) so a `pg_dump` still captures the entire archive, files
+included, and nothing depends on the app server's filesystem.
+
+Prefer plain files? Set `RECEIPTS_DIR` in `.env` (or pass
+`--receipts-dir <path>` to the fetcher) and receipts are written to
+`<dir>/<expense id>/<original file name>` instead, with only the relative
+path recorded in the database:
+
+```bash
+npm run fetch -- --resource expense_receipts --receipts-dir ./receipts
+```
+
+The web app reads `RECEIPTS_DIR` to serve them, so it must see the same
+directory — fine for a self-hosted box or a mounted volume, not for
+Railway's ephemeral filesystem. Receipts already archived in Postgres stay
+there; switching modes only affects receipts downloaded afterwards, and the
+viewer serves each one from wherever it lives. Remember to back the
+directory up alongside your `pg_dump`.
+
+Every other field
 Harvest returns for an expense — category, units, unit price, billable and
 billed flags, the invoice it was billed on, lock state, and so on — is
 parsed into columns with the complete API record kept in `raw_json`. The

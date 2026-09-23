@@ -457,9 +457,12 @@ CREATE INDEX IF NOT EXISTS idx_expenses_client    ON expenses(client_id, spent_d
 CREATE INDEX IF NOT EXISTS idx_expenses_category  ON expenses(expense_category_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_invoice   ON expenses(invoice_id);
 
--- Receipt files, stored in Postgres so pg_dump still captures the whole
--- archive (Railway's filesystem is ephemeral). Kept in a separate table so
--- expense list queries never drag the bytes along.
+-- Receipt files. By default the bytes live in `data` so pg_dump still
+-- captures the whole archive (Railway's filesystem is ephemeral). With
+-- RECEIPTS_DIR set, the fetcher writes the file to disk instead and records
+-- its path (relative to RECEIPTS_DIR) in `file_path`. Exactly one of the two
+-- is populated for an archived receipt. Kept in a separate table so expense
+-- list queries never drag the bytes along.
 CREATE TABLE IF NOT EXISTS expense_receipts (
   expense_id    BIGINT PRIMARY KEY,
   url           TEXT,
@@ -467,9 +470,12 @@ CREATE TABLE IF NOT EXISTS expense_receipts (
   content_type  TEXT,
   file_size     BIGINT,
   data          BYTEA,
+  file_path     TEXT,
   fetched_at    TIMESTAMPTZ,
   fetch_error   TEXT
 );
+-- Additive migration for databases created before file_path existed.
+ALTER TABLE expense_receipts ADD COLUMN IF NOT EXISTS file_path TEXT;
 
 -- ─── Full-text search ────────────────────────────────────────────────
 -- Unified search index. tsvector generated as a stored column with weighted

@@ -22,6 +22,11 @@ const schema = z.object({
   // Harvest asks that API clients identify themselves with a contact in the
   // User-Agent — set HARVEST_USER_AGENT to include your email in .env.
   HARVEST_USER_AGENT: optStr.default("Hayloft (github.com/WebDevStudios/hayloft)"),
+  // When set, the fetcher writes expense receipt files into this directory
+  // (one subfolder per expense) instead of storing the bytes in Postgres, and
+  // the web app reads them back from there. Leave unset to keep receipts in
+  // the database (the default, and the only option on ephemeral hosts).
+  RECEIPTS_DIR: optStr,
 
   APP_PASSWORD_HASH: optStr,
   SESSION_SECRET: optStr.refine(

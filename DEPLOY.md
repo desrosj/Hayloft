@@ -65,6 +65,7 @@ Still in **Variables**, add:
 | `APP_PASSWORD_HASH` | `$2a$12$...` | Run `npm run hash-password` locally |
 | `SESSION_SECRET` | 32+ random chars | `openssl rand -hex 32` |
 | `NODE_ENV` | `production` | |
+| `RECEIPTS_DIR` | (leave unset) | Only for hosts with a persistent volume; see below |
 
 `DATABASE_URL` is already there from step 3. `PORT` is auto-set by Railway.
 
@@ -105,6 +106,12 @@ upload, no surprises. Takes 15–30 min for a decade of history, plus one
 request per expense receipt (receipt files are stored in Postgres, so budget
 the Postgres volume for them — a few hundred MB for thousands of receipts is
 typical).
+
+If you would rather keep receipts as files, set `RECEIPTS_DIR` (or pass
+`--receipts-dir`) when fetching *and* on the web service, pointing both at
+the same persistent volume. Leave it unset on Railway's default setup: the
+container filesystem is wiped on every deploy, and receipts on disk are not
+part of `pg_dump`, so you would need to back the directory up separately.
 
 ### Option B — Run fetch on Railway
 

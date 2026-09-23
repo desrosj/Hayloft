@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import type { FetchMode, ResourceDef } from "./types.js";
 import { RESOURCES_BY_NAME } from "./resources.js";
 import { upsertBatch } from "./upsert.js";
+import { receiptRelativePath, removeReceiptFile, writeReceiptFile } from "../lib/receipts.js";
 
 interface RunResourceOpts {
   def: ResourceDef;
@@ -12,6 +13,8 @@ interface RunResourceOpts {
   maxPages?: number;
   startPage?: number;
   since?: string;
+  /** expense_receipts only: write files here instead of into Postgres */
+  receiptsDir?: string;
   onProgress?: (info: {
     page: number;
     totalPages: number;
@@ -273,12 +276,21 @@ async function runEstimateChildren(opts: RunResourceOpts) {
 /**
  * Download receipt files for expenses that have one. Incremental by nature:
  * only expenses whose receipt is missing, previously failed, or whose URL
- * changed since we last fetched it are (re)downloaded. Files land in
- * expense_receipts as BYTEA so pg_dump still captures the whole archive.
+ * changed since we last fetched it are (re)downloaded.
+ *
+ * Storage: by default the bytes go into expense_receipts.data (BYTEA) so
+ * pg_dump still captures the whole archive. With `receiptsDir` set, the file
+ * is written to <receiptsDir>/<expense_id>/<file_name> and only its relative
+ * path is recorded (expense_receipts.file_path). A receipt already archived
+ * either way is left alone, so switching modes only affects new downloads.
  */
 async function runExpenseReceipts(opts: RunResourceOpts) {
-  const { limit, onProgress } = opts;
+  const { limit, onProgress, receiptsDir } = opts;
   const pool = getPool();
+
+  if (receiptsDir) {
+    logger.info({ receiptsDir }, "storing receipt files on disk instead of in Postgres");
+  }
 
   const pending = await q<{
     id: number;
@@ -286,13 +298,17 @@ async function runExpenseReceipts(opts: RunResourceOpts) {
     receipt_file_name: string | null;
     receipt_content_type: string | null;
     receipt_file_size: number | null;
+    old_file_path: string | null;
   }>(
     `
-    SELECT e.id, e.receipt_url, e.receipt_file_name, e.receipt_content_type, e.receipt_file_size
+    SELECT e.id, e.receipt_url, e.receipt_file_name, e.receipt_content_type, e.receipt_file_size,
+           r.file_path AS old_file_path
     FROM expenses e
     LEFT JOIN expense_receipts r ON r.expense_id = e.id
     WHERE e.receipt_url IS NOT NULL
-      AND (r.expense_id IS NULL OR r.data IS NULL OR r.url IS DISTINCT FROM e.receipt_url)
+      AND (r.expense_id IS NULL
+           OR (r.data IS NULL AND r.file_path IS NULL)
+           OR r.url IS DISTINCT FROM e.receipt_url)
     ORDER BY e.spent_date DESC, e.id DESC
     `,
   );
@@ -310,29 +326,35 @@ async function runExpenseReceipts(opts: RunResourceOpts) {
 
       try {
         const { data, contentType } = await harvestDownload(e.receipt_url);
+        // Prefer Harvest's declared type; fall back to what the server sent.
+        const type = e.receipt_content_type ?? contentType?.split(";")[0]?.trim() ?? null;
+
+        let filePath: string | null = null;
+        if (receiptsDir) {
+          filePath = receiptRelativePath(e.id, e.receipt_file_name);
+          await writeReceiptFile(receiptsDir, filePath, data);
+          // A renamed receipt leaves its predecessor behind otherwise.
+          if (e.old_file_path && e.old_file_path !== filePath) {
+            await removeReceiptFile(receiptsDir, e.old_file_path);
+          }
+        }
+
         await pool.query(
           `
           INSERT INTO expense_receipts
-            (expense_id, url, file_name, content_type, file_size, data, fetched_at, fetch_error)
-          VALUES ($1, $2, $3, $4, $5, $6, now(), NULL)
+            (expense_id, url, file_name, content_type, file_size, data, file_path, fetched_at, fetch_error)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, now(), NULL)
           ON CONFLICT (expense_id) DO UPDATE SET
             url = EXCLUDED.url,
             file_name = EXCLUDED.file_name,
             content_type = EXCLUDED.content_type,
             file_size = EXCLUDED.file_size,
             data = EXCLUDED.data,
+            file_path = EXCLUDED.file_path,
             fetched_at = now(),
             fetch_error = NULL
           `,
-          [
-            e.id,
-            e.receipt_url,
-            e.receipt_file_name,
-            // Prefer Harvest's declared type; fall back to what the server sent.
-            e.receipt_content_type ?? contentType?.split(";")[0]?.trim() ?? null,
-            data.length,
-            data,
-          ],
+          [e.id, e.receipt_url, e.receipt_file_name, type, data.length, filePath ? null : data, filePath],
         );
         written++;
         consecutiveAuthFailures = 0;
@@ -347,12 +369,12 @@ async function runExpenseReceipts(opts: RunResourceOpts) {
           (err.status === 401 || err.status === 403 || err.body.includes("HTML page"));
         consecutiveAuthFailures = authFailure ? consecutiveAuthFailures + 1 : 0;
         logger.warn({ expense: e.id, url: e.receipt_url, err: message }, "receipt download failed");
-        // Record the failure without touching url/data, so the next run
-        // retries it and any previously good copy survives.
+        // Record the failure without touching url/data/file_path, so the next
+        // run retries it and any previously good copy survives.
         await pool.query(
           `
-          INSERT INTO expense_receipts (expense_id, url, file_name, content_type, file_size, data, fetched_at, fetch_error)
-          VALUES ($1, NULL, $2, $3, $4, NULL, now(), $5)
+          INSERT INTO expense_receipts (expense_id, url, file_name, content_type, file_size, data, file_path, fetched_at, fetch_error)
+          VALUES ($1, NULL, $2, $3, $4, NULL, NULL, now(), $5)
           ON CONFLICT (expense_id) DO UPDATE SET
             fetched_at = now(),
             fetch_error = EXCLUDED.fetch_error

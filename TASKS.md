@@ -14,6 +14,7 @@
 ## Backlog
 
 - [ ] Fetcher: `--receipts-only`/skip flag + parallel receipt downloads if large accounts are slow #feature ^bl-receipts-perf
+- [ ] Script to move already-archived receipts between Postgres and RECEIPTS_DIR (export/import) #feature ^bl-receipts-migrate
 - [ ] Expense category browse/rollup page (totals per category per year) #feature ^bl-expense-cats
 - [ ] Test suite scaffold (vitest): db helpers, upsert, auth, harvestDownload redirect/auth handling #quality ^bl-tests
 - [ ] CSV export per list view #feature ^bl-csv
@@ -23,6 +24,7 @@
 ## Done
 
 - [x] Expenses: fetch expense_categories + expenses + receipt files (BYTEA), `/expenses` browser + detail w/ receipt preview & prev/next, cross-links on project/person/client/invoice, search index !!! #feature ^ft-expenses
+- [x] Receipts on disk: `RECEIPTS_DIR` / `--receipts-dir` writes files to `<dir>/<expense id>/<name>` instead of Postgres; viewer serves from either !! #feature ^ft-receipts-disk
 - [x] Fix search: ts_headline option string with a space broke every query (0 results) #bug ^bug-search-headline
 - [x] Rebrand to Hayloft: rename wds-* Tailwind tokens, login/footer/wordmark, env defaults !!! #oss ^os-rebrand
 - [x] Docs for public release: README rewrite, LICENSE (MIT), CONTRIBUTING, issue templates !!! #oss ^os-docs

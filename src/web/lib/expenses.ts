@@ -49,7 +49,7 @@ export async function expensesFor(
              ec.name AS category_name,
              e.total_cost, c.currency, e.billable, e.is_billed, e.notes,
              (e.receipt_url IS NOT NULL) AS has_receipt,
-             (r.data IS NOT NULL) AS receipt_stored
+             (r.data IS NOT NULL OR r.file_path IS NOT NULL) AS receipt_stored
       FROM expenses e
       LEFT JOIN users u ON u.id = e.user_id
       LEFT JOIN projects p ON p.id = e.project_id
