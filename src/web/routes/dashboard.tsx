@@ -25,6 +25,8 @@ dashboardRoutes.get("/", async (c) => {
     recentProjects,
     topContributors,
     recentInvoices,
+    expenseTotals,
+    monthlyExpenses,
   ] = await Promise.all([
     qScalar<number>("SELECT count(*)::int FROM projects").catch(() => 0),
     qScalar<number>("SELECT count(*)::int FROM clients").catch(() => 0),
@@ -122,6 +124,13 @@ dashboardRoutes.get("/", async (c) => {
       `,
       { cutoff: cutoff90 },
     ).catch(() => []),
+    qOne<{ count: number; with_receipts: number }>(
+      "SELECT count(*)::int AS count, count(receipt_url)::int AS with_receipts FROM expenses",
+    ).catch(() => undefined),
+    qScalar<number>(
+      `SELECT COALESCE(SUM(total_cost), 0)::float FROM expenses WHERE spent_date >= @cutoff`,
+      { cutoff: cutoff30 },
+    ).catch(() => 0),
   ]);
 
   return c.html(
@@ -134,12 +143,15 @@ dashboardRoutes.get("/", async (c) => {
         earliestEntry: span?.first ?? null,
         latestEntry: span?.last ?? null,
         lastSyncAt: lastSync ?? null,
+        expenses: Number(expenseTotals?.count ?? 0),
+        expensesWithReceipts: Number(expenseTotals?.with_receipts ?? 0),
       }}
       monthly={{
         activeProjects: Number(activeProjectCount ?? 0),
         contributors: Number(monthlyAgg?.contributors ?? 0),
         hours: Number(monthlyAgg?.hours ?? 0),
         invoiced: Number(monthlyInvoiced ?? 0),
+        expenses: Number(monthlyExpenses ?? 0),
       }}
       recentProjects={recentProjects}
       topContributors={topContributors}

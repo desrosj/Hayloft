@@ -44,12 +44,15 @@ interface DashboardProps {
     earliestEntry: string | null;
     latestEntry: string | null;
     lastSyncAt: string | null;
+    expenses: number;
+    expensesWithReceipts: number;
   };
   monthly: {
     activeProjects: number;
     contributors: number;
     hours: number;
     invoiced: number;
+    expenses: number;
   };
   recentProjects: RecentProject[];
   topContributors: TopContributor[];
@@ -98,7 +101,11 @@ export const Dashboard: FC<DashboardProps> = ({
           <StatCard
             label="Invoiced"
             value={money(monthly.invoiced)}
-            hint="last 30 days"
+            hint={
+              monthly.expenses > 0
+                ? `last 30 days · ${money(monthly.expenses)} in expenses`
+                : "last 30 days"
+            }
           />
         </section>
 
@@ -231,6 +238,14 @@ export const Dashboard: FC<DashboardProps> = ({
               <Row label="Clients" value={fmt.format(totals.clients)} />
               <Row label="People" value={fmt.format(totals.people)} />
               <Row label="Time entries" value={fmt.format(totals.timeEntries)} />
+              <Row
+                label="Expenses"
+                value={
+                  totals.expenses > 0
+                    ? `${fmt.format(totals.expenses)} (${fmt.format(totals.expensesWithReceipts)} with receipts)`
+                    : "—"
+                }
+              />
               <Row label="Last sync" value={totals.lastSyncAt ? date(totals.lastSyncAt) : "—"} />
             </dl>
             <div class="mt-4 pt-4 border-t border-edge">

@@ -32,6 +32,9 @@ searchRoutes.get("/search", async (c) => {
 
   let hits: SearchHit[] = [];
   try {
+    // NB: ts_headline's option string is a Postgres parameter list; values
+    // with spaces (e.g. a multi-class attribute) make it throw. Keep the
+    // markers plain and style <mark> in styles.css instead.
     hits = await q<SearchHit>(
       `
         SELECT kind,
@@ -42,7 +45,7 @@ searchRoutes.get("/search", async (c) => {
                  'english',
                  COALESCE(body, ''),
                  to_tsquery('english', @tsq),
-                 'StartSel=<mark class="bg-accent/30 px-0.5">, StopSel=</mark>, MaxFragments=2, MaxWords=20, MinWords=5, ShortWord=2'
+                 'StartSel=<mark>, StopSel=</mark>, MaxFragments=2, MaxWords=20, MinWords=5, ShortWord=2'
                ) AS snippet
         FROM search_index
         WHERE tsv @@ to_tsquery('english', @tsq)

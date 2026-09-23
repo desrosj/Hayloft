@@ -1,6 +1,8 @@
 import { Command } from "commander";
 import cliProgress from "cli-progress";
+import { resolve } from "node:path";
 import { exec, q, closePool } from "../lib/db.js";
+import { loadEnv } from "../config/env.js";
 import { logger } from "../lib/logger.js";
 import { migrate } from "../db/migrate.js";
 import { RESOURCES, fetchOrder, RESOURCES_BY_NAME } from "./resources.js";
@@ -23,6 +25,10 @@ program
   .option("--dry-run", "Show what would be fetched, write nothing")
   .option("--list", "List known resources and exit")
   .option("--reset-resource <name>", "TRUNCATE one table before refetching")
+  .option(
+    "--receipts-dir <path>",
+    "Write expense receipt files to this directory instead of storing them in Postgres (default: $RECEIPTS_DIR)",
+  )
   .option("--no-search-index", "Skip rebuilding the FTS search index at the end")
   .parse(process.argv);
 
@@ -37,8 +43,14 @@ const opts = program.opts<{
   dryRun?: boolean;
   list?: boolean;
   resetResource?: string;
+  receiptsDir?: string;
   searchIndex: boolean;
 }>();
+
+// CLI flag wins over the env var; either way resolve to an absolute path so
+// the web app (which reads RECEIPTS_DIR) and the fetcher agree on it.
+const receiptsDirRaw = opts.receiptsDir ?? loadEnv().RECEIPTS_DIR;
+const receiptsDir = receiptsDirRaw ? resolve(receiptsDirRaw) : undefined;
 
 if (opts.list) {
   console.log("\nAvailable resources (fetched in this order):\n");
@@ -74,6 +86,9 @@ if (opts.resetResource) {
     process.exit(1);
   }
   console.log(`Wiping table: ${def.table}`);
+  if (def.name === "expense_receipts" && receiptsDir) {
+    console.log(`  (files already written under ${receiptsDir} are left in place)`);
+  }
   await exec(`TRUNCATE TABLE ${def.table} CASCADE`);
   await exec(`DELETE FROM sync_state WHERE resource = '${def.name.replace(/'/g, "''")}'`);
 }
@@ -84,6 +99,7 @@ const SPINE_RESOURCES = new Set([
   "projects",
   "tasks",
   "invoice_item_categories",
+  "expense_categories",
   "roles",
 ]);
 
@@ -151,6 +167,9 @@ console.log(`\n┌─ HAYLOFT — fetch starting ${startedAt.toISOString()}`);
 console.log(`├─ Mode: ${opts.mode}${opts.since ? ` · since=${opts.since}` : ""}`);
 console.log(`├─ Resources: ${toRun.map((r) => r.name).join(", ")}`);
 if (opts.limit) console.log(`├─ Limit: ${opts.limit} items per resource`);
+if (receiptsDir && toRun.some((r) => r.name === "expense_receipts")) {
+  console.log(`├─ Receipts: files → ${receiptsDir}`);
+}
 if (opts.pages) console.log(`├─ Pages: ${opts.pages} pages per resource`);
 console.log(`└─ Run id: ${runId}\n`);
 
@@ -173,6 +192,7 @@ try {
         maxPages: opts.pages,
         startPage: opts.startPage,
         since: opts.since,
+        receiptsDir,
         onProgress: (info) => {
           bar.setTotal(Math.max(info.totalEntries, info.itemsSeen));
           bar.update(info.itemsSeen, {

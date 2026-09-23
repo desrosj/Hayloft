@@ -4,6 +4,7 @@ import { ClientsList, type ClientRow } from "../views/clients-list.js";
 import { ClientDetail } from "../views/client-detail.js";
 import { parsePage } from "../lib/pagination.js";
 import { parsePeriod, periodCutoff } from "../lib/period.js";
+import { expensesFor } from "../lib/expenses.js";
 
 export const clientsRoutes = new Hono();
 
@@ -127,7 +128,7 @@ clientsRoutes.get("/clients/:id", async (c) => {
   );
   if (!client) return c.notFound();
 
-  const [projAgg, hourAgg, invAgg, contacts, projects, invoices, estimates] = await Promise.all([
+  const [projAgg, hourAgg, invAgg, contacts, projects, invoices, estimates, expenses] = await Promise.all([
     qOne<{ project_count: number; active_project_count: number }>(
       `
       SELECT COUNT(*)::int AS project_count,
@@ -198,6 +199,7 @@ clientsRoutes.get("/clients/:id", async (c) => {
     `,
       { id },
     ),
+    expensesFor("client_id", id),
   ]);
 
   return c.html(
@@ -208,6 +210,7 @@ clientsRoutes.get("/clients/:id", async (c) => {
       projects={projects as never}
       invoices={invoices as never}
       estimates={estimates as never}
+      expenses={expenses}
     />,
   );
 });

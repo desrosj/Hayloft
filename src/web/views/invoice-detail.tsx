@@ -3,6 +3,8 @@ import { Layout } from "./layout.js";
 import { PageHeader, StatCard } from "./components/PageHeader.js";
 import { Empty } from "./components/Empty.js";
 import { date, dateTime, money, num } from "../lib/format.js";
+import { ExpensesSection } from "./components/ExpensesTable.js";
+import type { ExpenseSummary } from "../lib/expenses.js";
 
 interface InvoiceDetailProps {
   invoice: {
@@ -64,6 +66,7 @@ interface InvoiceDetailProps {
     body: string | null;
     event_type: string | null;
   }[];
+  expenses: ExpenseSummary;
 }
 
 export const InvoiceDetail: FC<InvoiceDetailProps> = ({
@@ -71,6 +74,7 @@ export const InvoiceDetail: FC<InvoiceDetailProps> = ({
   lineItems,
   payments,
   messages,
+  expenses,
 }) => {
   const currency = invoice.currency ?? "USD";
   const paid = (invoice.amount ?? 0) - (invoice.due_amount ?? 0);
@@ -178,6 +182,12 @@ export const InvoiceDetail: FC<InvoiceDetailProps> = ({
             </div>
           )}
         </section>
+
+        <ExpensesSection
+          summary={expenses}
+          title="Expenses billed on this invoice"
+          currency={currency}
+        />
 
         {payments.length > 0 && (
           <section class="mb-8">

@@ -149,6 +149,141 @@ export class HarvestError extends Error {
   }
 }
 
+export interface DownloadResult {
+  data: Buffer;
+  contentType: string | null;
+}
+
+// Receipt uploads in Harvest are capped well below this; the guard just keeps
+// a misbehaving response from ballooning memory.
+const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024;
+
+// Only these count as "try again": everything else in the 5xx range (501
+// Not Implemented, 505 HTTP Version Not Supported, ...) is deterministic and
+// retrying just burns time and rate limit.
+const RETRYABLE_5XX = new Set([500, 502, 503, 504]);
+
+/** Credentials only ever go to Harvest's own hosts, never to storage/CDN origins. */
+function isHarvestHost(url: URL): boolean {
+  const h = url.hostname.toLowerCase();
+  return h === "harvestapp.com" || h.endsWith(".harvestapp.com") || h.endsWith(".getharvest.com");
+}
+
+/** Compact description of a failed response for logs and fetch_error. */
+async function describeResponse(res: Response): Promise<string> {
+  const interesting = ["server", "via", "x-cache", "content-type", "location", "x-request-id"];
+  const headers = interesting
+    .map((k) => [k, res.headers.get(k)] as const)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  let body = "";
+  try {
+    body = (await res.text()).replace(/\s+/g, " ").trim().slice(0, 300);
+  } catch {
+    // ignore unreadable bodies
+  }
+  return [headers ? `[${headers}]` : "", body].filter(Boolean).join(" ");
+}
+
+/**
+ * Download a file that Harvest links to (e.g. an expense receipt URL such as
+ * https://{subdomain}.harvestapp.com/expenses/{id}/receipt).
+ *
+ * Harvest authenticates these with the same bearer token + account id as the
+ * API, then typically redirects to a signed storage URL. Redirects are
+ * followed manually so credentials are only ever sent to the Harvest origin.
+ */
+export async function harvestDownload(
+  url: string,
+  opts: { maxBytes?: number; signal?: AbortSignal } = {},
+): Promise<DownloadResult> {
+  const env = loadEnv({ requireHarvest: true });
+  const maxBytes = opts.maxBytes ?? MAX_DOWNLOAD_BYTES;
+
+  // Parse up front: this both validates the URL Harvest gave us and makes
+  // sure the request line is properly percent-encoded.
+  let current = new URL(url).toString();
+  let withAuth = isHarvestHost(new URL(current));
+  let hops = 0;
+  let attempt = 0;
+  const maxAttempts = 6;
+  const trail = (): string => (hops > 0 ? ` (after ${hops} redirect${hops === 1 ? "" : "s"} from ${url})` : "");
+
+  while (true) {
+    // Only Harvest-origin requests count against the API rate limit.
+    if (withAuth) await throttle(false);
+    attempt++;
+
+    const headers: Record<string, string> = {
+      "User-Agent": env.HARVEST_USER_AGENT,
+      Accept: "*/*",
+    };
+    if (withAuth) {
+      headers.Authorization = `Bearer ${env.HARVEST_ACCESS_TOKEN}`;
+      headers["Harvest-Account-Id"] = env.HARVEST_ACCOUNT_ID!;
+    }
+
+    const res = await fetch(current, {
+      method: "GET",
+      headers,
+      redirect: "manual",
+      signal: opts.signal,
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new HarvestError(res.status, current, `redirect without Location${trail()}`);
+      if (++hops > 5) throw new HarvestError(res.status, current, `too many redirects${trail()}`);
+      const next = new URL(location, current);
+      // Keep credentials only while we stay on the same Harvest origin.
+      withAuth = withAuth && isHarvestHost(next) && next.origin === new URL(current).origin;
+      logger.debug({ from: current, to: next.toString(), withAuth }, "download redirect");
+      current = next.toString();
+      continue;
+    }
+
+    if (res.ok) {
+      const contentType = res.headers.get("content-type");
+      const declared = Number(res.headers.get("content-length") ?? 0);
+      if (declared > maxBytes) {
+        throw new HarvestError(res.status, current, `file too large (${declared} bytes)`);
+      }
+      // A 200 HTML page here means we were bounced to a login screen rather
+      // than handed the file — surface that instead of archiving the HTML.
+      if (contentType && /text\/html/i.test(contentType)) {
+        throw new HarvestError(res.status, current, `received an HTML page instead of a file (auth?)${trail()}`);
+      }
+      const data = Buffer.from(await res.arrayBuffer());
+      if (data.length > maxBytes) {
+        throw new HarvestError(res.status, current, `file too large (${data.length} bytes)`);
+      }
+      return { data, contentType };
+    }
+
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("retry-after") ?? "15");
+      logger.warn({ url: current, retryAfter, attempt }, "rate limited (429) on download; waiting");
+      await new Promise((r) => setTimeout(r, (retryAfter + 1) * 1000));
+      continue;
+    }
+
+    if (RETRYABLE_5XX.has(res.status) && attempt < maxAttempts) {
+      const backoff = Math.min(2 ** attempt * 500, 15_000);
+      logger.warn({ url: current, status: res.status, attempt, backoff }, "5xx on download; retrying");
+      await new Promise((r) => setTimeout(r, backoff));
+      continue;
+    }
+
+    const detail = await describeResponse(res);
+    logger.warn(
+      { url: current, status: res.status, withAuth, hops, detail },
+      "download failed",
+    );
+    throw new HarvestError(res.status, current, `${detail}${trail()}`);
+  }
+}
+
 export async function* paginate<T>(
   path: string,
   opts: FetchOpts & { perPage?: number; startPage?: number } = {},

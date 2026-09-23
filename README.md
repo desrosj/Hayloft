@@ -13,13 +13,15 @@ somewhere *you* control, in a format that will still open in twenty years.
 
 ## What it does
 
-1. **Fetches** your entire Harvest account through the official API — 18+
+1. **Fetches** your entire Harvest account through the official API — 20+
    resource types including projects, tasks, clients, contacts, team members,
    time entries, invoices (with line items, payments, and messages),
-   estimates, and expenses. Rate-limit aware, resumable, idempotent.
+   estimates, expense categories, and expenses — **including the receipt
+   file attached to each expense**. Rate-limit aware, resumable, idempotent.
 2. **Serves** the archive as a password-protected web app: dashboard, browse
-   pages with period filters, cross-linked detail views, and full-text search
-   across projects, people, invoices, and time-entry notes.
+   pages with period filters, cross-linked detail views, an expense browser
+   with inline receipt previews, and full-text search across projects,
+   people, invoices, expenses, and time-entry notes.
 3. **Stays portable** — it's just Postgres. `pg_dump` produces a single
    `.sql` file restorable anywhere, forever. No vendor, no lock-in, no
    subscription.
@@ -27,6 +29,10 @@ somewhere *you* control, in a format that will still open in twenty years.
 | Time entries | Full-text search |
 |---|---|
 | ![Time entries](docs/time.png) | ![Search](docs/search.png) |
+
+| Expenses | Expense detail with receipt |
+|---|---|
+| ![Expenses](docs/expenses.png) | ![Expense detail](docs/expense-detail.png) |
 
 ## Stack
 
@@ -67,6 +73,50 @@ npm run dev
 
 No Harvest account handy? `npm run seed-demo` loads a small fake dataset so
 you can explore the UI.
+
+### Expenses and receipts
+
+Expenses are fetched like any other resource. Receipt files are a separate
+step because each one is its own download:
+
+```bash
+# Everything (npm run fetch already includes all three)
+npm run fetch -- --resource expense_categories,expenses,expense_receipts
+
+# Just (re)download receipt files — only missing/failed/changed ones are fetched
+npm run fetch -- --resource expense_receipts
+```
+
+By default receipts are stored in Postgres (`expense_receipts`, one `BYTEA`
+row per expense) so a `pg_dump` still captures the entire archive, files
+included, and nothing depends on the app server's filesystem.
+
+Prefer plain files? Set `RECEIPTS_DIR` in `.env` (or pass
+`--receipts-dir <path>` to the fetcher) and receipts are written to
+`<dir>/<expense id>/<original file name>` instead, with only the relative
+path recorded in the database:
+
+```bash
+npm run fetch -- --resource expense_receipts --receipts-dir ./receipts
+```
+
+The web app reads `RECEIPTS_DIR` to serve them, so it must see the same
+directory — fine for a self-hosted box or a mounted volume, not for
+Railway's ephemeral filesystem. Receipts already archived in Postgres stay
+there; switching modes only affects receipts downloaded afterwards, and the
+viewer serves each one from wherever it lives. Remember to back the
+directory up alongside your `pg_dump`.
+
+Every other field
+Harvest returns for an expense — category, units, unit price, billable and
+billed flags, the invoice it was billed on, lock state, and so on — is
+parsed into columns with the complete API record kept in `raw_json`. The
+expense detail page shows all of it, previews image and PDF receipts inline,
+and has newer/older links for stepping through expenses one at a time.
+
+Receipt downloads use the same personal access token as the API; the token
+needs to belong to a user who can see expenses (an administrator, or a
+manager for the relevant people/projects).
 
 ## Deploying
 

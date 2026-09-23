@@ -4,6 +4,7 @@ import { InvoicesList, type InvoiceRow } from "../views/invoices-list.js";
 import { InvoiceDetail } from "../views/invoice-detail.js";
 import { parsePage } from "../lib/pagination.js";
 import { parsePeriod, periodCutoff } from "../lib/period.js";
+import { expensesFor } from "../lib/expenses.js";
 
 export const invoicesRoutes = new Hono();
 
@@ -108,7 +109,7 @@ invoicesRoutes.get("/invoices/:id", async (c) => {
   );
   if (!invoice) return c.notFound();
 
-  const [lineItems, payments, messages] = await Promise.all([
+  const [lineItems, payments, messages, expenses] = await Promise.all([
     q(
       `
       SELECT li.*, p.name AS project_name FROM invoice_line_items li
@@ -126,6 +127,8 @@ invoicesRoutes.get("/invoices/:id", async (c) => {
       `SELECT * FROM invoice_messages WHERE invoice_id = @id ORDER BY sent_at DESC NULLS LAST`,
       { id },
     ),
+    // Every expense billed on this invoice (no cap — an invoice is finite).
+    expensesFor("invoice_id", id, 500),
   ]);
 
   return c.html(
@@ -134,6 +137,7 @@ invoicesRoutes.get("/invoices/:id", async (c) => {
       lineItems={lineItems as never}
       payments={payments as never}
       messages={messages as never}
+      expenses={expenses}
     />,
   );
 });

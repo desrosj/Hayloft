@@ -88,3 +88,21 @@ export function activeBadge(isActive: number | boolean | null | undefined): {
         classes: "bg-surface text-slate border-edge",
       };
 }
+
+export function bytes(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+}
+
+export function yesNo(v: boolean | number | null | undefined): string {
+  if (v === null || v === undefined) return "—";
+  return v === true || v === 1 ? "Yes" : "No";
+}
