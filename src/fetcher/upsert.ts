@@ -76,7 +76,9 @@ export async function upsertBatch(
 
   let written = 0;
   for (const raw of items) {
-    const flat = flattenItem(raw, def);
+    const flat = flattenItem(def.transform ? def.transform(raw) : raw, def);
+    // raw_json is always the untouched API payload, even when transform added keys.
+    flat.raw_json = JSON.stringify(raw);
     const cols = Object.keys(flat).filter((k) => columns.includes(k));
     if (cols.length === 0) continue;
 

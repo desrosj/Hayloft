@@ -1,4 +1,4 @@
-import { harvestFetch, paginate, rateSnapshot } from "../lib/harvest.js";
+import { HarvestError, harvestDownload, harvestFetch, paginate, rateSnapshot } from "../lib/harvest.js";
 import { getPool, q, qOne } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import type { FetchMode, ResourceDef } from "./types.js";
@@ -69,6 +69,7 @@ export async function runResource(opts: RunResourceOpts): Promise<{
   if (def.name === "invoice_payments") return runInvoiceChildren(opts, "invoice_payments");
   if (def.name === "invoice_messages") return runInvoiceChildren(opts, "invoice_messages");
   if (def.name === "estimate_messages") return runEstimateChildren(opts);
+  if (def.name === "expense_receipts") return runExpenseReceipts(opts);
   if (def.name === "company") return runSingleton(opts);
 
   const query: Record<string, string | number> = {};
@@ -266,6 +267,128 @@ async function runEstimateChildren(opts: RunResourceOpts) {
     });
   }
   await setLastSync("estimate_messages", true, written);
+  return { itemsSeen: seen, itemsWritten: written };
+}
+
+/**
+ * Download receipt files for expenses that have one. Incremental by nature:
+ * only expenses whose receipt is missing, previously failed, or whose URL
+ * changed since we last fetched it are (re)downloaded. Files land in
+ * expense_receipts as BYTEA so pg_dump still captures the whole archive.
+ */
+async function runExpenseReceipts(opts: RunResourceOpts) {
+  const { limit, onProgress } = opts;
+  const pool = getPool();
+
+  const pending = await q<{
+    id: number;
+    receipt_url: string;
+    receipt_file_name: string | null;
+    receipt_content_type: string | null;
+    receipt_file_size: number | null;
+  }>(
+    `
+    SELECT e.id, e.receipt_url, e.receipt_file_name, e.receipt_content_type, e.receipt_file_size
+    FROM expenses e
+    LEFT JOIN expense_receipts r ON r.expense_id = e.id
+    WHERE e.receipt_url IS NOT NULL
+      AND (r.expense_id IS NULL OR r.data IS NULL OR r.url IS DISTINCT FROM e.receipt_url)
+    ORDER BY e.spent_date DESC, e.id DESC
+    `,
+  );
+
+  const total = limit !== undefined ? Math.min(limit, pending.length) : pending.length;
+  let seen = 0;
+  let written = 0;
+  let failed = 0;
+  let consecutiveAuthFailures = 0;
+
+  try {
+    for (const e of pending) {
+      if (limit !== undefined && seen >= limit) break;
+      seen++;
+
+      try {
+        const { data, contentType } = await harvestDownload(e.receipt_url);
+        await pool.query(
+          `
+          INSERT INTO expense_receipts
+            (expense_id, url, file_name, content_type, file_size, data, fetched_at, fetch_error)
+          VALUES ($1, $2, $3, $4, $5, $6, now(), NULL)
+          ON CONFLICT (expense_id) DO UPDATE SET
+            url = EXCLUDED.url,
+            file_name = EXCLUDED.file_name,
+            content_type = EXCLUDED.content_type,
+            file_size = EXCLUDED.file_size,
+            data = EXCLUDED.data,
+            fetched_at = now(),
+            fetch_error = NULL
+          `,
+          [
+            e.id,
+            e.receipt_url,
+            e.receipt_file_name,
+            // Prefer Harvest's declared type; fall back to what the server sent.
+            e.receipt_content_type ?? contentType?.split(";")[0]?.trim() ?? null,
+            data.length,
+            data,
+          ],
+        );
+        written++;
+        consecutiveAuthFailures = 0;
+      } catch (err) {
+        failed++;
+        const message = (err as Error).message ?? String(err);
+        // 401/403 (or being bounced to a login page) means the token can't
+        // read receipts at all. A 404 or 5xx is specific to one file and
+        // must never block the rest of the queue.
+        const authFailure =
+          err instanceof HarvestError &&
+          (err.status === 401 || err.status === 403 || err.body.includes("HTML page"));
+        consecutiveAuthFailures = authFailure ? consecutiveAuthFailures + 1 : 0;
+        logger.warn({ expense: e.id, url: e.receipt_url, err: message }, "receipt download failed");
+        // Record the failure without touching url/data, so the next run
+        // retries it and any previously good copy survives.
+        await pool.query(
+          `
+          INSERT INTO expense_receipts (expense_id, url, file_name, content_type, file_size, data, fetched_at, fetch_error)
+          VALUES ($1, NULL, $2, $3, $4, NULL, now(), $5)
+          ON CONFLICT (expense_id) DO UPDATE SET
+            fetched_at = now(),
+            fetch_error = EXCLUDED.fetch_error
+          `,
+          [e.id, e.receipt_file_name, e.receipt_content_type, e.receipt_file_size, message.slice(0, 1000)],
+        );
+        // If nothing has succeeded and the first several attempts are all
+        // auth failures, something systemic is wrong (token scope, feature
+        // disabled) — stop instead of burning through the rate limit.
+        if (written === 0 && consecutiveAuthFailures >= 5) {
+          throw new Error(
+            `aborting receipt downloads after ${consecutiveAuthFailures} consecutive auth failures; last: ${message}`,
+          );
+        }
+      }
+
+      onProgress?.({
+        page: seen,
+        totalPages: total,
+        itemsSeen: seen,
+        itemsWritten: written,
+        totalEntries: total,
+      });
+    }
+  } catch (err) {
+    await setLastSync("expense_receipts", false, written, (err as Error).message);
+    throw err;
+  }
+
+  await setLastSync(
+    "expense_receipts",
+    limit === undefined,
+    written,
+    undefined,
+    failed > 0 ? `${failed} receipt download(s) failed — re-run to retry` : "",
+  );
   return { itemsSeen: seen, itemsWritten: written };
 }
 

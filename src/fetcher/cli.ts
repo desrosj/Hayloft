@@ -84,6 +84,7 @@ const SPINE_RESOURCES = new Set([
   "projects",
   "tasks",
   "invoice_item_categories",
+  "expense_categories",
   "roles",
 ]);
 

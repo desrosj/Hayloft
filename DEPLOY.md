@@ -101,7 +101,10 @@ reliable than fighting Railway's container shell.
    ```
 
 This streams data straight from Harvest into Railway's Postgres. No SSH, no
-upload, no surprises. Takes 15–30 min for a decade of history.
+upload, no surprises. Takes 15–30 min for a decade of history, plus one
+request per expense receipt (receipt files are stored in Postgres, so budget
+the Postgres volume for them — a few hundred MB for thousands of receipts is
+typical).
 
 ### Option B — Run fetch on Railway
 
@@ -125,7 +128,9 @@ npm run fetch -- --mode sync
 ```
 
 This uses `updated_since` from each resource's `sync_state` row, so it only
-asks Harvest for records changed since the last successful sync.
+asks Harvest for records changed since the last successful sync. Receipt
+files are incremental in either mode: only expenses whose receipt is
+missing, previously failed, or whose URL changed are downloaded again.
 
 ## Downloading the archive for permanent offline storage
 
@@ -173,6 +178,14 @@ in the canvas, then redeploy the web service so it picks up the URL.
 Make sure you're using Railway's **Public URL** (not the internal
 `postgres.railway.internal` one). The public URL is exposed for external
 connections.
+
+**Receipt downloads fail with 401/403**
+The personal access token can read the expense records but not their
+files. Receipt URLs are served by your account's own Harvest domain and
+require a user who can see the expense in Harvest (an admin, or a manager
+for that person/project). Check `/admin` for the per-resource error, fix
+the token, and re-run `npm run fetch -- --resource expense_receipts` — only
+the failed ones are retried.
 
 **Fetch hits rate limits**
 The client paces at ~90 req / 15s with auto-backoff. If you're seeing 429s,

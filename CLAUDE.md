@@ -12,6 +12,11 @@ Hono JSX SSR app (`src/web/`) serves it read-only behind a shared password.
 - New Harvest resources follow the existing pattern: entry in
   `src/fetcher/resources.ts` + table in `src/db/schema.sql` with parsed
   columns plus a `raw_json` escape hatch.
+- Binary attachments (expense receipts) live in Postgres as `BYTEA`
+  (`expense_receipts`), never on disk — the deploy target's filesystem is
+  ephemeral and `pg_dump` must remain the complete archive. Serve them
+  through an authenticated route with a safe content type (see
+  `/expenses/:id/receipt`).
 
 ## Task tracking
 

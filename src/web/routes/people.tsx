@@ -4,6 +4,7 @@ import { PeopleList, type PersonRow } from "../views/people-list.js";
 import { PersonDetail } from "../views/person-detail.js";
 import { parsePage } from "../lib/pagination.js";
 import { parsePeriod, periodCutoff } from "../lib/period.js";
+import { expensesFor } from "../lib/expenses.js";
 
 export const peopleRoutes = new Hono();
 
@@ -108,7 +109,7 @@ peopleRoutes.get("/people/:id", async (c) => {
   );
   if (!person) return c.notFound();
 
-  const [stats, byYear, byProject, recentEntries] = await Promise.all([
+  const [stats, byYear, byProject, recentEntries, expenses] = await Promise.all([
     qOne(
       `
       SELECT
@@ -164,6 +165,7 @@ peopleRoutes.get("/people/:id", async (c) => {
     `,
       { id },
     ),
+    expensesFor("user_id", id),
   ]);
 
   return c.html(
@@ -173,6 +175,7 @@ peopleRoutes.get("/people/:id", async (c) => {
       byYear={byYear as never}
       byProject={byProject as never}
       recentEntries={recentEntries as never}
+      expenses={expenses}
     />,
   );
 });

@@ -196,6 +196,51 @@ export const RESOURCES: ResourceDef[] = [
     dependsOn: ["projects", "tasks", "users"],
     supportsUpdatedSince: true,
   },
+  {
+    name: "expense_categories",
+    label: "Expense categories",
+    path: "/expense_categories",
+    envelopeKey: "expense_categories",
+    table: "expense_categories",
+    supportsUpdatedSince: true,
+  },
+  {
+    name: "expenses",
+    label: "Expenses",
+    path: "/expenses",
+    envelopeKey: "expenses",
+    table: "expenses",
+    dependsOn: ["projects", "users", "expense_categories"],
+    supportsUpdatedSince: true,
+    // `receipt` is an object without an id, so keep it as JSONB and also
+    // lift its fields into parsed columns for querying.
+    jsonFields: ["receipt"],
+    transform: (item) => {
+      const receipt = (item.receipt ?? null) as {
+        url?: string | null;
+        file_name?: string | null;
+        file_size?: number | null;
+        content_type?: string | null;
+      } | null;
+      return {
+        ...item,
+        receipt_url: receipt?.url ?? null,
+        receipt_file_name: receipt?.file_name ?? null,
+        receipt_file_size: receipt?.file_size ?? null,
+        receipt_content_type: receipt?.content_type ?? null,
+      };
+    },
+  },
+  {
+    // Not a Harvest list endpoint: downloads each expense's receipt file
+    // (see runExpenseReceipts in runner.ts) into expense_receipts.
+    name: "expense_receipts",
+    label: "Expense receipts (files)",
+    path: "{expense.receipt.url}",
+    envelopeKey: "",
+    table: "expense_receipts",
+    dependsOn: ["expenses"],
+  },
 ];
 
 export const RESOURCES_BY_NAME = new Map(RESOURCES.map((r) => [r.name, r]));

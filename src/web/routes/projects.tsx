@@ -4,6 +4,7 @@ import { ProjectsList, type ProjectRow } from "../views/projects-list.js";
 import { ProjectDetail } from "../views/project-detail.js";
 import { parsePage } from "../lib/pagination.js";
 import { parsePeriod, periodCutoff } from "../lib/period.js";
+import { expensesFor } from "../lib/expenses.js";
 
 export const projectsRoutes = new Hono();
 
@@ -132,7 +133,7 @@ projectsRoutes.get("/projects/:id", async (c) => {
 
   if (!project) return c.notFound();
 
-  const [statsRow, invoiceAgg, contributors, taskBreakdown, recentEntries, invoices] =
+  const [statsRow, invoiceAgg, contributors, taskBreakdown, recentEntries, invoices, expenses] =
     await Promise.all([
       qOne<{
         total_hours: number;
@@ -216,6 +217,7 @@ projectsRoutes.get("/projects/:id", async (c) => {
       `,
         { id },
       ),
+      expensesFor("project_id", id),
     ]);
 
   return c.html(
@@ -229,6 +231,7 @@ projectsRoutes.get("/projects/:id", async (c) => {
       taskBreakdown={taskBreakdown as never}
       recentEntries={recentEntries as never}
       invoices={invoices as never}
+      expenses={expenses}
     />,
   );
 });

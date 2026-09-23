@@ -3,6 +3,8 @@ import { Layout } from "./layout.js";
 import { PageHeader, StatCard } from "./components/PageHeader.js";
 import { Empty } from "./components/Empty.js";
 import { activeBadge, date, fullName, hours, money, truncate } from "../lib/format.js";
+import { ExpensesSection } from "./components/ExpensesTable.js";
+import type { ExpenseSummary } from "../lib/expenses.js";
 
 interface PersonDetailProps {
   person: {
@@ -50,6 +52,7 @@ interface PersonDetailProps {
     notes: string | null;
     billable: number;
   }[];
+  expenses: ExpenseSummary;
 }
 
 export const PersonDetail: FC<PersonDetailProps> = ({
@@ -58,6 +61,7 @@ export const PersonDetail: FC<PersonDetailProps> = ({
   byYear,
   byProject,
   recentEntries,
+  expenses,
 }) => {
   const badge = activeBadge(person.is_active);
   let roleList: string[] = [];
@@ -210,6 +214,12 @@ export const PersonDetail: FC<PersonDetailProps> = ({
             </div>
           )}
         </section>
+
+        <ExpensesSection
+          summary={expenses}
+          viewAllHref={`/expenses?user=${person.id}&period=all`}
+          showPerson={false}
+        />
       </div>
     </Layout>
   );

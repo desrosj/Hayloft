@@ -34,6 +34,12 @@ export interface ResourceDef {
   jsonFields?: string[];
   /** fields to drop from the row before insert */
   dropFields?: string[];
+  /**
+   * Pre-flatten hook: derive extra top-level fields from the raw item (e.g.
+   * pull `receipt.url` up to `receipt_url`). The untouched raw item is still
+   * what lands in raw_json.
+   */
+  transform?: (item: Record<string, unknown>) => Record<string, unknown>;
   /** custom post-write hook (e.g., expand nested arrays) */
   afterUpsert?: (
     executor: pg.PoolClient | pg.Pool,

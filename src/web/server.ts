@@ -11,6 +11,7 @@ import { peopleRoutes } from "./routes/people.jsx";
 import { clientsRoutes } from "./routes/clients.jsx";
 import { timeRoutes } from "./routes/time.jsx";
 import { invoicesRoutes } from "./routes/invoices.jsx";
+import { expensesRoutes } from "./routes/expenses.jsx";
 import { searchRoutes } from "./routes/search.jsx";
 import { adminRoutes } from "./routes/admin.jsx";
 import { requireAuth } from "./middleware/auth.js";
@@ -35,6 +36,7 @@ protectedApp.route("/", peopleRoutes);
 protectedApp.route("/", clientsRoutes);
 protectedApp.route("/", timeRoutes);
 protectedApp.route("/", invoicesRoutes);
+protectedApp.route("/", expensesRoutes);
 protectedApp.route("/", searchRoutes);
 protectedApp.route("/", adminRoutes);
 

@@ -25,9 +25,10 @@ const KIND_META: Record<string, { label: string; href: (id: number) => string }>
   task: { label: "Tasks", href: (id) => `/time?task=${id}` },
   invoice: { label: "Invoices", href: (id) => `/invoices/${id}` },
   time_entry: { label: "Time entries", href: (id) => `/time?q=${id}` },
+  expense: { label: "Expenses", href: (id) => `/expenses/${id}` },
 };
 
-const ORDER = ["project", "client", "user", "invoice", "task", "time_entry"];
+const ORDER = ["project", "client", "user", "invoice", "expense", "task", "time_entry"];
 
 export const SearchView: FC<SearchProps> = ({ q, grouped, total }) => {
   return (
@@ -38,8 +39,8 @@ export const SearchView: FC<SearchProps> = ({ q, grouped, total }) => {
           title={q ? `Results for "${q}"` : "Search the archive"}
           subtitle={
             q
-              ? `${total} ${total === 1 ? "match" : "matches"} across projects, clients, people, invoices, tasks, and time-entry notes.`
-              : "Use the search box in the header to find projects, clients, people, invoices, or any text in time-entry notes."
+              ? `${total} ${total === 1 ? "match" : "matches"} across projects, clients, people, invoices, expenses, tasks, and time-entry notes.`
+              : "Use the search box in the header to find projects, clients, people, invoices, expenses, or any text in time-entry notes."
           }
         />
 

@@ -3,6 +3,8 @@ import { Layout } from "./layout.js";
 import { PageHeader, StatCard } from "./components/PageHeader.js";
 import { Empty } from "./components/Empty.js";
 import { activeBadge, date, hours, money } from "../lib/format.js";
+import { ExpensesSection } from "./components/ExpensesTable.js";
+import type { ExpenseSummary } from "../lib/expenses.js";
 
 interface ClientDetailProps {
   client: {
@@ -63,6 +65,7 @@ interface ClientDetailProps {
     amount: number;
     currency: string;
   }[];
+  expenses: ExpenseSummary;
 }
 
 export const ClientDetail: FC<ClientDetailProps> = ({
@@ -72,6 +75,7 @@ export const ClientDetail: FC<ClientDetailProps> = ({
   projects,
   invoices,
   estimates,
+  expenses,
 }) => {
   const badge = activeBadge(client.is_active);
   const currency = client.currency ?? "USD";
@@ -214,6 +218,12 @@ export const ClientDetail: FC<ClientDetailProps> = ({
             </div>
           </section>
         )}
+
+        <ExpensesSection
+          summary={expenses}
+          viewAllHref={`/expenses?client=${client.id}&period=all`}
+          currency={currency}
+        />
 
         {estimates.length > 0 && (
           <section class="mb-8">

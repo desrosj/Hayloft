@@ -12,6 +12,7 @@ const NAV = [
   { key: "clients", href: "/clients", label: "Clients" },
   { key: "people", href: "/people", label: "People" },
   { key: "time", href: "/time", label: "Time" },
+  { key: "expenses", href: "/expenses", label: "Expenses" },
   { key: "invoices", href: "/invoices", label: "Invoices" },
 ];
 
@@ -60,7 +61,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
                   <input
                     type="search"
                     name="q"
-                    placeholder="Search projects, clients, people, time entry notes, invoices…"
+                    placeholder="Search projects, clients, people, time entry notes, expenses, invoices…"
                     class="flex-1 rounded bg-ink border border-white/10 px-3 py-1.5 text-sm text-white placeholder-white/40 focus:outline-none focus:border-accent"
                   />
                   <button type="submit" class="btn-primary py-1.5 px-4 text-[11px]">

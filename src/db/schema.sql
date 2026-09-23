@@ -410,6 +410,67 @@ CREATE TABLE IF NOT EXISTS estimate_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_estimate_messages_estimate ON estimate_messages(estimate_id);
 
+-- ─── Expenses ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS expense_categories (
+  id          BIGINT PRIMARY KEY,
+  name        TEXT,
+  unit_name   TEXT,
+  unit_price  NUMERIC,
+  is_active   BOOLEAN,
+  created_at  TIMESTAMPTZ,
+  updated_at  TIMESTAMPTZ,
+  raw_json    JSONB
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id                    BIGINT PRIMARY KEY,
+  spent_date            DATE,
+  user_id               BIGINT,
+  user_assignment_id    BIGINT,
+  client_id             BIGINT,
+  project_id            BIGINT,
+  expense_category_id   BIGINT,
+  invoice_id            BIGINT,
+  notes                 TEXT,
+  units                 NUMERIC,
+  total_cost            NUMERIC,
+  billable              BOOLEAN,
+  is_closed             BOOLEAN,
+  is_locked             BOOLEAN,
+  is_billed             BOOLEAN,
+  locked_reason         TEXT,
+  -- Receipt metadata as reported by Harvest. The file itself lives in
+  -- expense_receipts (fetched separately by the expense_receipts resource).
+  receipt               JSONB,
+  receipt_url           TEXT,
+  receipt_file_name     TEXT,
+  receipt_file_size     BIGINT,
+  receipt_content_type  TEXT,
+  created_at            TIMESTAMPTZ,
+  updated_at            TIMESTAMPTZ,
+  raw_json              JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_date      ON expenses(spent_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_user      ON expenses(user_id, spent_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_project   ON expenses(project_id, spent_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_client    ON expenses(client_id, spent_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_category  ON expenses(expense_category_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_invoice   ON expenses(invoice_id);
+
+-- Receipt files, stored in Postgres so pg_dump still captures the whole
+-- archive (Railway's filesystem is ephemeral). Kept in a separate table so
+-- expense list queries never drag the bytes along.
+CREATE TABLE IF NOT EXISTS expense_receipts (
+  expense_id    BIGINT PRIMARY KEY,
+  url           TEXT,
+  file_name     TEXT,
+  content_type  TEXT,
+  file_size     BIGINT,
+  data          BYTEA,
+  fetched_at    TIMESTAMPTZ,
+  fetch_error   TEXT
+);
+
 -- ─── Full-text search ────────────────────────────────────────────────
 -- Unified search index. tsvector generated as a stored column with weighted
 -- A/B/C across title/subtitle/body for ranked results.

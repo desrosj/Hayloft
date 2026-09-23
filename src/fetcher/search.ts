@@ -119,6 +119,36 @@ export async function rebuildSearchIndex() {
     );
   }
 
+  type Expense = {
+    id: number;
+    notes: string | null;
+    spent_date: string;
+    total_cost: number | null;
+    receipt_file_name: string | null;
+    category_name: string | null;
+    project_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+  const expenses = await q<Expense>(
+    `SELECT e.id, e.notes, e.spent_date, e.total_cost, e.receipt_file_name,
+            ec.name AS category_name, p.name AS project_name,
+            u.first_name, u.last_name
+     FROM expenses e
+     LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
+     LEFT JOIN projects p ON p.id = e.project_id
+     LEFT JOIN users u ON u.id = e.user_id`,
+  );
+  for (const e of expenses) {
+    await insert(
+      "expense",
+      e.id,
+      `${e.category_name ?? "Expense"} · ${e.project_name ?? "—"} · ${e.spent_date}`,
+      `${e.first_name ?? ""} ${e.last_name ?? ""}`.trim(),
+      [e.notes ?? "", e.receipt_file_name ?? ""].filter(Boolean).join(" "),
+    );
+  }
+
   const count = await qScalar<number>("SELECT count(*)::int FROM search_index");
   logger.info({ count }, "search index rebuilt");
 }
